@@ -19,27 +19,49 @@ def crawl_page(*args, **kwargs):
         print(type(e))
 
 
-def get_page_links(html):
-    return re.findall(r'href="/[a-zA-Z0-9/%-]*"', html)
+def get_page_links(html, make):
+    pattern = re.compile(f"href=\S+\/hyundai\/[^>\s]+")
+    return re.findall(pattern, html)
 
 
-def build_site_map(ep='http://localhost:3000'):
+def is_leaf_link(url):
+    return bool(re.search("\S+\/\d{5,}\"$", url))
+
+
+def fetch_data_div(html):
+    pattern = re.compile(r"^<div class=\"DescDataItem\"[\s\S]+?div>")
+    result = re.search(pattern, html)
+    div = result.group(1)
+    return div
+
+
+def populate_car(html):
+    data_html = fetch_data_div(html)
+    print(data_html)
+
+
+def build_site_map(ep='https://eg.hatla2ee.com/ar/car', make="hyundai"):
     to_crawl = [ep]
     crawled = []
     links = []
+    cars = []
     try:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             while len(to_crawl) > 0:
-                results = [executor.submit(crawl_page, url=url, ep=ep) for url in to_crawl]
+                results = [executor.submit(
+                    crawl_page, url=url, ep=ep, make=make) for url in to_crawl]
                 for f in concurrent.futures.as_completed(results):
                     result = f.result()
                     html = result['html']
                     crawled.append(result['url'])
-                    page_links = get_page_links(html)
-                    for link in page_links:
-                        if link not in crawled and link not in to_crawl:
-                            to_crawl.append(link)
-                            links.append(link)
+                    if not is_leaf_link(result['url']):
+                        page_links = get_page_links(html, make)
+                        for link in page_links:
+                            if link not in crawled and link not in to_crawl:
+                                to_crawl.append(link)
+                                links.append(link)
+                    else:
+                        cars.append(populate_car(html))
                     to_crawl.remove(result['url'])
         return sorted(links)
     except Exception as e:
